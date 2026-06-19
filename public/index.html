@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>marla — she catches your mail</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='5' fill='%23ff4f9a'/></svg>">
+  <link rel="stylesheet" href="fonts.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-view="list">
+  <div class="ml-root" id="root">
+
+    <!-- rainbow catch sweep (signature) -->
+    <div class="sweep-rail" aria-hidden="true"><div class="sweep" id="sweep"></div></div>
+
+    <!-- TOP BAR -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark" id="mark" aria-hidden="true"><span class="mark-dot"></span></div>
+        <div class="brand-text">
+          <div class="wordmark">Marla</div>
+          <div class="tagline">she catches your mail so it never leaves</div>
+        </div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <button class="conn" id="conn" data-state="connecting" type="button" title="Connection — click to change SMTP port">
+        <span class="conn-dot"></span>
+        <span class="conn-label">connecting</span>
+        <span class="conn-sep">·</span>
+        <span class="conn-port" id="connPort">SMTP :1025</span>
+      </button>
+
+      <div class="topbar-div"></div>
+
+      <div class="counts" id="counts">
+        <span class="counts-total" id="countsTotal">0</span> caught
+        <span class="counts-unread" id="countsUnread" hidden></span>
+      </div>
+
+      <button class="icon-btn" id="themeToggle" type="button" title="Toggle light / dark" aria-label="Toggle theme"></button>
+      <button class="ghost-btn" id="clearAll" type="button">Clear all</button>
+    </header>
+
+    <!-- BODY -->
+    <div class="body">
+      <!-- LIST -->
+      <aside class="list-pane" aria-label="Inbox">
+        <div class="list-head">
+          <div class="search">
+            <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+            <input class="search-input" id="filter" type="search" placeholder="Filter by sender, subject…" aria-label="Filter messages" autocomplete="off">
+          </div>
+        </div>
+        <ul class="list" id="list" role="listbox" aria-label="Trapped messages" tabindex="0"></ul>
+        <div class="list-empty" id="listEmpty">
+          <div class="list-empty-mark"><span></span></div>
+          <div>
+            <div class="list-empty-title">Listening for mail…</div>
+            <div class="list-empty-addr" id="listEmptyAddr">smtp://0.0.0.0:1025</div>
+          </div>
+          <div class="list-empty-hint">Point your app's SMTP host at this port. Anything it sends lands here — and goes no further.</div>
+        </div>
+      </aside>
+
+      <!-- READING PANE -->
+      <main class="read-pane" id="readPane" aria-label="Message">
+        <div class="read-empty" id="readEmpty">
+          <div class="read-empty-mark">
+            <svg width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2.5"/><path d="M3 7l9 6 9-6"/></svg>
+          </div>
+          <div class="read-empty-title">No mail caught yet</div>
+          <div class="read-empty-sub">Marla is idle and waiting. The moment an app sends through <span class="mono accent" id="readEmptyPort">:1025</span>, the message appears here instantly — no refresh.</div>
+        </div>
+
+        <article class="message" id="message" hidden>
+          <div class="message-head">
+            <button class="ghost-btn back" id="back" type="button">← inbox</button>
+            <div class="message-head-top">
+              <h1 class="subject" id="subject"></h1>
+              <div class="message-actions">
+                <a class="icon-btn" id="downloadEml" href="#" title="Download .eml" aria-label="Download .eml">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 11l5 4 5-4"/><path d="M5 21h14"/></svg>
+                </a>
+                <button class="icon-btn danger-hover" id="deleteOne" type="button" title="Delete" aria-label="Delete message">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="identity">
+              <span class="avatar" id="avatar"></span>
+              <span class="from-name" id="fromName"></span>
+              <span class="from-email mono" id="fromEmail"></span>
+              <span class="to-name" id="toName"></span>
+              <span class="identity-spacer"></span>
+              <span class="full-time mono" id="fullTime"></span>
+            </div>
+
+            <div class="envelope">
+              <span class="env-label">SMTP ENVELOPE</span>
+              <span class="env-pair">MAIL FROM <span id="envFrom"></span></span>
+              <span class="env-pair">RCPT TO <span id="envTo"></span></span>
+            </div>
+
+            <div class="attachments" id="attachments" hidden></div>
+
+            <nav class="tabs" id="tabs" role="tablist"></nav>
+          </div>
+
+          <div class="tab-body">
+            <div class="preview-wrap" id="previewWrap">
+              <div class="preview-note" id="previewNote"></div>
+              <div class="preview-card">
+                <iframe class="preview-frame" id="previewFrame" title="Rendered HTML body" sandbox=""></iframe>
+              </div>
+            </div>
+            <pre class="pre-body" id="textBody" hidden></pre>
+            <pre class="pre-body raw" id="rawBody" hidden></pre>
+            <div class="headers" id="headersBody" hidden></div>
+          </div>
+        </article>
+      </main>
+    </div>
+
+    <!-- CAUGHT TOAST (signature cue) -->
+    <div class="toast" id="toast" aria-hidden="true">
+      <span class="toast-dot"></span>
+      <span class="toast-text">Caught new mail</span>
+      <span class="toast-sub mono">— it never left</span>
+    </div>
+
+    <!-- SETTINGS DIALOG (inside .ml-root so it inherits theme + fonts) -->
+    <dialog class="settings" id="settings" aria-label="Settings">
+      <form class="settings-form" id="settingsForm" method="dialog">
+        <header class="settings-head">
+          <div class="settings-title">
+            <span class="settings-mark"><span></span></span>
+            <h2>Settings</h2>
+          </div>
+          <button class="icon-btn" id="closeSettings" type="button" aria-label="Close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </header>
+
+        <label class="field">
+          <span class="field-label">SMTP port</span>
+          <span class="field-hint">Where your app sends mail. Changes take effect immediately — no restart.</span>
+          <input class="field-input mono" id="smtpPortInput" type="number" min="1" max="65535" inputmode="numeric" required>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Web UI port</span>
+          <span class="field-hint">Set at launch via <code class="mono">HTTP_PORT</code>. Restart to change.</span>
+          <input class="field-input mono" id="httpPortInput" type="number" disabled>
+        </label>
+
+        <p class="settings-msg" id="settingsMsg" role="status" aria-live="polite"></p>
+
+        <div class="settings-actions">
+          <button class="ghost-btn" id="cancelSettings" type="button">Close</button>
+          <button class="primary-btn" id="saveSettings" type="submit">Save &amp; rebind</button>
+        </div>
+      </form>
+
+      <!-- discard-changes confirmation -->
+      <div class="confirm" id="confirm" hidden>
+        <div class="confirm-box">
+          <div class="confirm-title">Discard changes?</div>
+          <div class="confirm-text">Your new SMTP port hasn't been saved yet.</div>
+          <div class="confirm-actions">
+            <button class="ghost-btn" id="confirmKeep" type="button">Keep editing</button>
+            <button class="danger-btn" id="confirmDiscard" type="button">Discard</button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

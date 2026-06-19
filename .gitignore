@@ -1,0 +1,8 @@
+node_modules/
+npm-debug.log*
+.DS_Store
+*.log
+
+# runtime preference file (written to the user's home dir, but ignore any stray local copy)
+marla.config.json
+.marla.json
