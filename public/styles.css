@@ -136,6 +136,11 @@ body { overflow: hidden; }
 .conn[data-state="down"] .conn-label { color: #d79528; }
 .conn-sep { color: var(--tx-fainter); }
 .conn-port { color: var(--tx-low); }
+.conn-tls {
+  margin-left: 2px; padding: 1px 5px; border-radius: 5px;
+  background: var(--accent-soft); color: var(--accent-2);
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em;
+}
 
 .topbar-div { height: 20px; width: 1px; background: var(--bd-strong); }
 
@@ -401,6 +406,11 @@ body { overflow: hidden; }
 }
 .field-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .field-input:disabled { color: var(--tx-faint); opacity: 0.75; cursor: not-allowed; }
+select.field-input {
+  appearance: none; -webkit-appearance: none; cursor: pointer; padding-right: 30px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 11px center;
+}
 
 .settings-msg { margin: -4px 0 0; min-height: 15px; font-size: 12px; color: var(--tx-low); }
 .settings-msg[data-kind="error"] { color: var(--del-tx); }

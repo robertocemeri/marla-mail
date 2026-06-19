@@ -319,6 +319,8 @@ function toggleTheme() {
 // Settings (hung off the connection pill)
 // ---------------------------------------------------------------------------
 
+let smtpSecurity = 'plaintext';
+
 function applyPorts(s) {
   if (s.smtpPort) {
     smtpPort = s.smtpPort;
@@ -326,6 +328,15 @@ function applyPorts(s) {
     el('listEmptyAddr').textContent = `smtp://0.0.0.0:${s.smtpPort}`;
     el('readEmptyPort').textContent = `:${s.smtpPort}`;
     el('smtpPortInput').value = s.smtpPort;
+  }
+  if (s.smtpSecurity) {
+    smtpSecurity = s.smtpSecurity;
+    el('securitySelect').value = s.smtpSecurity;
+    updateSecurityHint();
+    const tls = el('connTls');
+    if (s.smtpSecurity === 'tls') { tls.hidden = false; tls.textContent = 'TLS'; }
+    else if (s.smtpSecurity === 'starttls') { tls.hidden = false; tls.textContent = 'STARTTLS'; }
+    else tls.hidden = true;
   }
   if (s.httpPort) el('httpPortInput').value = s.httpPort;
 }
@@ -342,8 +353,10 @@ function setSettingsMsg(text, kind) {
 
 // Track unsaved edits so closing can warn before discarding.
 let savedPortValue = '';
+let savedSecurityValue = '';
 function isDirty() {
-  return el('smtpPortInput').value.trim() !== savedPortValue.trim();
+  return el('smtpPortInput').value.trim() !== savedPortValue.trim()
+    || el('securitySelect').value !== savedSecurityValue;
 }
 
 function openSettings() {
@@ -351,6 +364,7 @@ function openSettings() {
   el('confirm').hidden = true;
   loadSettings();
   savedPortValue = String(smtpPort);
+  savedSecurityValue = smtpSecurity;
   el('settings').showModal();
 }
 
@@ -369,23 +383,35 @@ function forceClose() {
   el('settings').close();
 }
 
+const SECURITY_LABEL = { plaintext: 'plaintext', starttls: 'STARTTLS', tls: 'implicit TLS' };
+const SECURITY_HINT = {
+  plaintext: 'No TLS. Clients connect with secure: false. Default.',
+  starttls: 'Plaintext connect that can upgrade. Self-signed cert — clients set rejectUnauthorized: false.',
+  tls: 'Encrypted from connect. Clients set secure: true and rejectUnauthorized: false (self-signed cert).',
+};
+function updateSecurityHint() {
+  el('securityHint').textContent = SECURITY_HINT[el('securitySelect').value] || '';
+}
+
 async function saveSettings(e) {
   e.preventDefault();
   const port = parseInt(el('smtpPortInput').value, 10);
+  const security = el('securitySelect').value;
   setSettingsMsg('Rebinding…');
   try {
     const res = await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ smtpPort: port }),
+      body: JSON.stringify({ smtpPort: port, smtpSecurity: security }),
     });
     const data = await res.json();
     applyPorts(data);
     if (res.ok) {
       savedPortValue = String(data.smtpPort); // edits are now persisted
-      setSettingsMsg(`Trap now listening on :${data.smtpPort}`, 'ok');
+      savedSecurityValue = data.smtpSecurity;
+      setSettingsMsg(`Trap now listening on :${data.smtpPort} · ${SECURITY_LABEL[data.smtpSecurity] || data.smtpSecurity}`, 'ok');
     } else {
-      setSettingsMsg(data.error || 'Could not change port.', 'error');
+      setSettingsMsg(data.error || 'Could not change settings.', 'error');
     }
   } catch {
     setSettingsMsg('Request failed — is the server still running?', 'error');
@@ -479,6 +505,7 @@ function bindEvents() {
   el('conn').addEventListener('click', openSettings);
 
   el('settingsForm').addEventListener('submit', saveSettings);
+  el('securitySelect').addEventListener('change', updateSecurityHint);
   el('cancelSettings').addEventListener('click', requestClose);
   el('closeSettings').addEventListener('click', requestClose);
   el('confirmKeep').addEventListener('click', () => { el('confirm').hidden = true; el('smtpPortInput').focus(); });

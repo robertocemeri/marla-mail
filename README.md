@@ -15,7 +15,7 @@ A self-hosted, SMTP-only take on Mailtrap/MailHog/Mailpit: no accounts, no cloud
 - **SMTP envelope**: see the real `MAIL FROM` / `RCPT TO` alongside the header From/To.
 - **Light & dark themes**, responsive to mobile, keyboard-navigable, reduced-motion aware.
 - **In-memory only** — a ring buffer capped at 500 messages. Restart clears everything by design.
-- **Change the SMTP port live** from the UI (click the port pill) — rebinds with no restart.
+- **Change the SMTP port and connection security live** from the UI (click the port pill) — plaintext, STARTTLS, or implicit TLS, rebinds with no restart.
 - **Self-contained** — fonts are bundled; works fully offline.
 
 ## Quick start
@@ -66,7 +66,7 @@ Use these SMTP settings in any app or framework:
 | Host | `localhost` (or `127.0.0.1`) |
 | Port | `1025` |
 | Auth | none |
-| TLS / SSL / STARTTLS | off |
+| TLS / SSL / STARTTLS | off (default) — see **Connection security** below |
 
 A few examples:
 
@@ -92,6 +92,25 @@ EMAIL_PORT = 1025
 EMAIL_USE_TLS = False
 ```
 
+## Connection security
+
+Some apps default to wanting TLS and refuse to send to a plaintext server. Marla supports three connection modes, switchable live from the inbox **Settings** (click the `SMTP :1025` pill) or via the `SMTP_SECURITY` env var. TLS modes use an auto-generated self-signed certificate, so clients connect with `rejectUnauthorized: false`.
+
+| Mode | Client setup | Use when |
+| --- | --- | --- |
+| `plaintext` (default) | `secure: false` | Simplest; most dev setups |
+| `starttls` | `secure: false`, `rejectUnauthorized: false` | Your app requires/attempts a STARTTLS upgrade |
+| `tls` | `secure: true`, `rejectUnauthorized: false` | Your app uses implicit TLS (SSL on connect) |
+
+Example for a `secure: true` app (Nodemailer):
+
+```js
+require('nodemailer').createTransport({
+  host: 'localhost', port: 1025, secure: true,
+  tls: { rejectUnauthorized: false },   // self-signed cert
+});
+```
+
 ## Options
 
 Both ports are configurable via flags or environment variables.
@@ -106,6 +125,7 @@ SMTP_PORT=2525 HTTP_PORT=9000 marla
 | --- | --- | --- | --- |
 | `-s, --smtp-port` | `SMTP_PORT` | `1025` | Port to catch mail on |
 | `-p, --http-port` | `HTTP_PORT` | `8025` | Web inbox port |
+| | `SMTP_SECURITY` | `plaintext` | Connection security: `plaintext`, `starttls`, or `tls` |
 | `-h, --help` | | | Show help |
 | `-v, --version` | | | Print version |
 

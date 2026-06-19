@@ -37,6 +37,16 @@ const config = loadConfig();
 let smtpPort = parseInt(process.env.SMTP_PORT, 10) || config.smtpPort || 1025;
 const HTTP_PORT = parseInt(process.env.HTTP_PORT, 10) || 8025;
 
+// SMTP connection security: how the trap accepts connections.
+//   plaintext — no TLS (clients use secure:false)            [default]
+//   starttls  — plaintext, but advertises STARTTLS upgrade   (self-signed cert)
+//   tls       — implicit TLS on connect (clients use secure:true, self-signed)
+const SECURITY_MODES = ['plaintext', 'starttls', 'tls'];
+function normalizeSecurity(v) {
+  return SECURITY_MODES.includes(v) ? v : 'plaintext';
+}
+let smtpSecurity = normalizeSecurity(process.env.SMTP_SECURITY || config.smtpSecurity);
+
 // ---------------------------------------------------------------------------
 // Message shaping
 // ---------------------------------------------------------------------------
@@ -249,50 +259,80 @@ function broadcast(payload) {
 // SMTP trap — catches everything, relays nothing.
 // ---------------------------------------------------------------------------
 
-const smtpOptions = {
-  banner: 'Marla — she catches your mail so it never leaves',
-  authOptional: true, // accept AUTH if offered, never require it
-  disabledCommands: ['STARTTLS'], // no cert, so don't advertise it
-  // Accept any credentials when a client insists on authenticating.
-  onAuth(auth, session, callback) {
-    callback(null, { user: auth.username || 'anonymous' });
-  },
-  onData(stream, session, callback) {
-    const chunks = [];
-    stream.on('data', (c) => chunks.push(c));
-    stream.on('end', async () => {
-      const raw = Buffer.concat(chunks);
-      try {
-        const parsed = await simpleParser(raw);
-        const envelope = {
-          mailFrom: session.envelope.mailFrom ? session.envelope.mailFrom.address : null,
-          rcptTo: (session.envelope.rcptTo || []).map((r) => r.address),
-        };
-        const message = store.add({
-          receivedAt: new Date().toISOString(),
-          read: false,
-          raw,
-          parsed,
-          envelope,
-        });
-        broadcast({ type: 'new', message: toSummary(message) });
-        console.log(
-          `[caught] ${message.envelope.mailFrom || '?'} -> ${message.envelope.rcptTo.join(', ') || '?'}` +
-            `  "${parsed.subject || '(no subject)'}"`
-        );
-      } catch (err) {
-        console.error('[parse error]', err.message);
-      }
-      callback(); // ack to the client; the mail goes nowhere else
-    });
-    stream.on('error', (err) => {
-      console.error('[stream error]', err.message);
-      callback(err);
-    });
-  },
-};
+// A self-signed localhost cert, generated once on first TLS use. Clients connect
+// with rejectUnauthorized:false; this is a local dev trap, not a public server.
+let tlsPems = null;
+function getCert() {
+  if (!tlsPems) {
+    const selfsigned = require('selfsigned');
+    const pems = selfsigned.generate(
+      [{ name: 'commonName', value: 'localhost' }],
+      { days: 3650, keySize: 2048 }
+    );
+    tlsPems = { key: pems.private, cert: pems.cert };
+  }
+  return tlsPems;
+}
 
-let smtp = new SMTPServer(smtpOptions);
+// Handlers are identical across modes; only the transport security differs.
+function onAuth(auth, session, callback) {
+  callback(null, { user: auth.username || 'anonymous' });
+}
+function onData(stream, session, callback) {
+  const chunks = [];
+  stream.on('data', (c) => chunks.push(c));
+  stream.on('end', async () => {
+    const raw = Buffer.concat(chunks);
+    try {
+      const parsed = await simpleParser(raw);
+      const envelope = {
+        mailFrom: session.envelope.mailFrom ? session.envelope.mailFrom.address : null,
+        rcptTo: (session.envelope.rcptTo || []).map((r) => r.address),
+      };
+      const message = store.add({
+        receivedAt: new Date().toISOString(),
+        read: false,
+        raw,
+        parsed,
+        envelope,
+      });
+      broadcast({ type: 'new', message: toSummary(message) });
+      console.log(
+        `[caught] ${message.envelope.mailFrom || '?'} -> ${message.envelope.rcptTo.join(', ') || '?'}` +
+          `  "${parsed.subject || '(no subject)'}"`
+      );
+    } catch (err) {
+      console.error('[parse error]', err.message);
+    }
+    callback(); // ack to the client; the mail goes nowhere else
+  });
+  stream.on('error', (err) => {
+    console.error('[stream error]', err.message);
+    callback(err);
+  });
+}
+
+function buildSmtpOptions(mode) {
+  const opts = {
+    banner: 'Marla — she catches your mail so it never leaves',
+    authOptional: true, // accept AUTH if offered, never require it
+    onAuth,
+    onData,
+  };
+  if (mode === 'tls') {
+    // Implicit TLS: the whole connection is encrypted from the first byte.
+    Object.assign(opts, { secure: true }, getCert());
+  } else if (mode === 'starttls') {
+    // Plaintext connect that may upgrade via STARTTLS (advertised because a cert exists).
+    Object.assign(opts, getCert());
+  } else {
+    // Plaintext only: no cert, so don't advertise an upgrade path.
+    opts.disabledCommands = ['STARTTLS'];
+  }
+  return opts;
+}
+
+let smtp = new SMTPServer(buildSmtpOptions(smtpSecurity));
 
 // Bind `server` to `port`, resolving once it is listening and rejecting on a
 // bind failure (e.g. EADDRINUSE / EACCES) instead of crashing the process.
@@ -307,49 +347,85 @@ function listenSmtp(server, port) {
       server.removeListener('error', onError);
       server.on('error', (err) => console.error('[smtp error]', err.message));
       smtpPort = port;
-      console.log(`Marla SMTP trap listening on :${port}`);
+      console.log(`Marla SMTP trap listening on :${port} (${smtpSecurity})`);
       resolve();
     });
   });
 }
 
-// Move the trap to a new port. The new listener is bound BEFORE the old one is
-// dropped, so a failed rebind leaves the existing trap untouched and running.
-async function rebindSmtp(port) {
+// Move the trap to a new port and/or security mode.
+//  - Different port: bind the new listener BEFORE dropping the old (zero downtime).
+//  - Same port (e.g. a security-mode switch): the port must be freed first, so
+//    close the old listener, then bind the new one — restoring the old on failure.
+async function rebindSmtp(port, mode) {
   const old = smtp;
-  const next = new SMTPServer(smtpOptions);
-  await listenSmtp(next, port); // throws on failure; `smtp`/`old` stay live
-  smtp = next;
-  old.close(() => {}); // release the previous port in the background
+  const prevPort = smtpPort;
+  const prevMode = smtpSecurity;
+
+  if (port !== prevPort) {
+    const next = new SMTPServer(buildSmtpOptions(mode));
+    await listenSmtp(next, port); // throws on failure; old stays live
+    smtp = next;
+    smtpSecurity = mode;
+    old.close(() => {}); // release the previous port in the background
+    return;
+  }
+
+  // Same port — brief gap while we swap the listener.
+  await new Promise((resolve) => old.close(resolve));
+  const next = new SMTPServer(buildSmtpOptions(mode));
+  try {
+    await listenSmtp(next, port);
+    smtp = next;
+    smtpSecurity = mode;
+  } catch (err) {
+    // Couldn't bind the new mode — bring the previous one back up.
+    const restored = new SMTPServer(buildSmtpOptions(prevMode));
+    smtp = restored;
+    await listenSmtp(restored, prevPort).catch(() => {});
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Settings — live SMTP port, surfaced in the UI.
 // ---------------------------------------------------------------------------
 
+function currentSettings() {
+  return { smtpPort, smtpSecurity, httpPort: HTTP_PORT };
+}
+
 app.get('/api/settings', (req, res) => {
-  res.json({ smtpPort, httpPort: HTTP_PORT });
+  res.json(currentSettings());
 });
 
 app.post('/api/settings', async (req, res) => {
-  const port = parseInt(req.body && req.body.smtpPort, 10);
+  const body = req.body || {};
+  const port = body.smtpPort != null ? parseInt(body.smtpPort, 10) : smtpPort;
+  const mode = body.smtpSecurity != null ? body.smtpSecurity : smtpSecurity;
+
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    return res.status(400).json({ error: 'Port must be a number between 1 and 65535.', smtpPort });
+    return res.status(400).json({ error: 'Port must be a number between 1 and 65535.', ...currentSettings() });
   }
-  if (port === smtpPort) return res.json({ smtpPort, httpPort: HTTP_PORT });
+  if (!SECURITY_MODES.includes(mode)) {
+    return res.status(400).json({ error: 'Unknown security mode.', ...currentSettings() });
+  }
+  if (port === smtpPort && mode === smtpSecurity) {
+    return res.json(currentSettings());
+  }
 
   try {
-    await rebindSmtp(port);
-    saveConfig({ smtpPort: port });
-    broadcast({ type: 'settings', smtpPort });
-    res.json({ smtpPort, httpPort: HTTP_PORT });
+    await rebindSmtp(port, mode);
+    saveConfig({ smtpPort: port, smtpSecurity: mode });
+    broadcast({ type: 'settings', ...currentSettings() });
+    res.json(currentSettings());
   } catch (err) {
     const reason =
       err.code === 'EADDRINUSE' ? `Port ${port} is already in use.`
       : err.code === 'EACCES' ? `Port ${port} needs elevated privileges (try 1024 or above).`
-      : `Could not bind port ${port}: ${err.message}`;
-    // The trap is still on its previous port — report that back.
-    res.status(409).json({ error: reason, smtpPort });
+      : `Could not apply settings: ${err.message}`;
+    // The trap is still on its previous port/mode — report that back.
+    res.status(409).json({ error: reason, ...currentSettings() });
   }
 });
 

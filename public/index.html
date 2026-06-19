@@ -31,6 +31,7 @@
         <span class="conn-label">connecting</span>
         <span class="conn-sep">·</span>
         <span class="conn-port" id="connPort">SMTP :1025</span>
+        <span class="conn-tls" id="connTls" hidden>TLS</span>
       </button>
 
       <div class="topbar-div"></div>
@@ -148,6 +149,16 @@
           <span class="field-label">SMTP port</span>
           <span class="field-hint">Where your app sends mail. Changes take effect immediately — no restart.</span>
           <input class="field-input mono" id="smtpPortInput" type="number" min="1" max="65535" inputmode="numeric" required>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Connection security</span>
+          <span class="field-hint" id="securityHint">How the trap accepts connections. Switches live, with a self-signed cert for TLS.</span>
+          <select class="field-input" id="securitySelect">
+            <option value="plaintext">Plaintext — clients use secure: false</option>
+            <option value="starttls">STARTTLS — plaintext, upgradable (self-signed)</option>
+            <option value="tls">Implicit TLS — clients use secure: true (self-signed)</option>
+          </select>
         </label>
 
         <label class="field">

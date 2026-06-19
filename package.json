@@ -48,6 +48,7 @@
   "dependencies": {
     "express": "^4.19.2",
     "mailparser": "^3.7.1",
+    "selfsigned": "^2.4.1",
     "smtp-server": "^3.13.4",
     "ws": "^8.18.0"
   }
