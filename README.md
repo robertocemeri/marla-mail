@@ -34,8 +34,8 @@ marla
 Or clone and run:
 
 ```bash
-git clone https://github.com/robertocemeri/marla.git
-cd marla
+git clone https://github.com/robertocemeri/marla-mail.git
+cd marla-mail
 npm install
 npm start
 ```

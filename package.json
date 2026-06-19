@@ -14,13 +14,13 @@
     "dev-tool",
     "inbox"
   ],
-  "homepage": "https://github.com/robertocemeri/marla#readme",
+  "homepage": "https://github.com/robertocemeri/marla-mail#readme",
   "bugs": {
-    "url": "https://github.com/robertocemeri/marla/issues"
+    "url": "https://github.com/robertocemeri/marla-mail/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/robertocemeri/marla.git"
+    "url": "git+https://github.com/robertocemeri/marla-mail.git"
   },
   "license": "MIT",
   "author": "robertocemeri",
