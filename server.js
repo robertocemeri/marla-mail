@@ -10,6 +10,7 @@ const { SMTPServer } = require('smtp-server');
 const { simpleParser } = require('mailparser');
 
 const store = require('./store');
+const service = require('./lib/service');
 
 // Persisted UI preferences (just the SMTP port for now). Survives restarts so
 // a port you pick in the inbox sticks. An explicit env var always wins.
@@ -417,6 +418,8 @@ app.post('/api/settings', async (req, res) => {
   try {
     await rebindSmtp(port, mode);
     saveConfig({ smtpPort: port, smtpSecurity: mode });
+    // Keep the PID file's reported port/mode accurate after a live rebind.
+    service.writePidFile({ smtpPort, httpPort: HTTP_PORT, smtpSecurity });
     broadcast({ type: 'settings', ...currentSettings() });
     res.json(currentSettings());
   } catch (err) {
@@ -457,4 +460,20 @@ wss.on('error', handleBootError); // ws re-emits the http server's bind error
 
 httpServer.listen(HTTP_PORT, () => {
   console.log(`Marla inbox: http://localhost:${HTTP_PORT}`);
+  // Record this instance so `marla status` / `stop` can find it, however it
+  // was started (foreground, `marla start`, or the auto-start service).
+  service.writePidFile({ smtpPort, httpPort: HTTP_PORT, smtpSecurity });
 });
+
+// Clean up the PID file on shutdown so we never leave stale state behind.
+// SIGINT covers foreground Ctrl-C; SIGTERM covers `marla stop` and the OS
+// service managers.
+let shuttingDown = false;
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  service.clearPidFile();
+  process.exit(0);
+}
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

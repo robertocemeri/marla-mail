@@ -49,6 +49,48 @@ Marla inbox: http://localhost:8025
 
 Open **http://localhost:8025** and leave it open.
 
+## Keep Marla running (no terminal)
+
+Tired of starting Marla by hand every time? Run it in the background so the
+inbox is always there at `http://localhost:8025`.
+
+```bash
+marla start      # run in the background; survives closing the terminal
+marla status     # is it running? on which ports?
+marla stop       # stop it
+marla restart    # stop + start
+marla logs       # show the background log (--follow to tail it)
+```
+
+To have Marla come back automatically after a reboot, register it to
+**auto-start on login** (works on macOS, Linux, and Windows):
+
+```bash
+marla install    # start now and on every login
+marla uninstall  # stop and remove auto-start
+```
+
+`start` and `install` take the same `--smtp-port` / `--http-port` /
+`SMTP_SECURITY` options as the foreground command, and `install` remembers them
+across reboots:
+
+```bash
+marla install --smtp-port 2525 --http-port 9000
+```
+
+Notes:
+
+- For auto-start, install Marla globally (`npm install -g marla-mail`) rather
+  than running it from `npx` or a project folder — login services need a stable
+  path they can read. On macOS, that also means **not** from `~/Desktop`,
+  `~/Documents`, or `~/Downloads`, which the OS keeps private from background
+  agents; `marla install` will warn you if you try.
+- These commands manage a single background instance. Running extra copies on
+  other ports (e.g. `HTTP_PORT=8026 marla`) still works but isn't tracked by
+  `status` / `stop`.
+- Running Marla in the foreground (plain `marla`, Ctrl-C to quit) works exactly
+  as before.
+
 ## Send a test message
 
 No app needed — the bundled script sends one HTML email with an attachment and an inline image:
